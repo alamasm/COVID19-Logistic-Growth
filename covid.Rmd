@@ -1,0 +1,123 @@
+---
+title: "Моделирование распространения COVID 19 в мире с помощью логистического уравнения"
+author: "Булавко Егор"
+date: "8/20/2020"
+output: 
+  pdf_document:
+    latex_engine: xelatex
+mainfont: Arial
+    
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(ggthemes)
+library(knitr)
+```
+# Описание
+Используя [данные](https://github.com/CSSEGISandData/COVID-19/blob/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv) университета Джона Хопкинса 
+обучим модель логистического роста 
+$$y = \frac{Asym}{1+e^{\frac{xmid - x}{scal}}}$$
+с тремя параметрами:
+
+1. Asym -- асимптота
+2. xmid -- $x$ координата точки перегиба
+3. scal -- масшаб по оси $x$
+
+Где $x$ -- номер дня с начала эпидемии, $y$ -- количество заболевших.
+Для обучения будем использовать нелинейный метод наименьших квадратов.
+
+# Данные по миру
+```{r load_data, cache=TRUE}
+data <- read.csv("https://github.com/CSSEGISandData/COVID-19/raw/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv")
+data <- pivot_longer(data, cols = seq(5, ncol(data), 1), names_to = "Date")
+data$Date <- str_replace_all(data$Date, "X", "0")
+data$Date <- as.Date(data$Date, format = "%m.%d.%y")
+data$Province.State <- as.factor(data$Province.State)
+data$Country.Region <- as.factor(data$Country.Region)
+data_worldwide <- data %>% group_by(Date) %>% summarize(value = sum(value))
+data_worldwide$day <- seq(1, nrow(data_worldwide), 1)
+data_russia <- data %>% filter(Country.Region == "Russia")
+data_russia$day <- seq(1, nrow(data_russia), 1)
+```
+
+```{r plot_real_data_worldwide, cache=TRUE}
+ggplot(data = data_worldwide, aes(x = Date, y = value)) + geom_line(col = "#00BFC4", size = 1.2) + 
+  scale_x_date(date_breaks = "1 month", date_labels = "%m/%d", ) +
+  ggtitle("Real COVID19 data worldwide") + xlab("") + 
+       ylab("Number of cases") + theme_bw() + theme(legend.position = "none") + theme_clean()
+```
+
+```{r fit_model_worldwide}
+fit <- nls(value ~ SSlogis(day, Asym, xmid, scale), data = data_worldwide)
+summ <- summary(fit)
+Asym <- summ$coefficients[1]
+Asym_se <- summ$coefficients[4]
+```
+
+В результате получили модель со значением $Asym = `r Asym` \pm `r Asym_se` (p < 0.001)$
+
+```{r get_predicted_data_worldwide, cache=TRUE}
+last_date <- as.Date("31.12.20", format = "%d.%m.%y")
+days <- seq(1, as.numeric(last_date - data_worldwide$Date[1]) + 1, 1)
+data_predicted <- tibble(day = days, 
+                         Date = seq(data_worldwide$Date[1], last_date, 1), 
+                       predicted_value = predict(fit, newdata = data.frame(day = days)))
+data_worldwide <- full_join(data_predicted, data_worldwide, by = c("day" = "day", "Date" = "Date"))
+```
+
+```{r plot_predicted_data}
+plot_data <- function(title, data, breaks, Asym) {
+  ggplot(data = data, aes(x = Date, y = value)) + geom_line(
+    aes(x = Date, y = predicted_value, col = "Predicted data"),
+    size = 1.4, linetype = "dashed") + 
+    scale_x_date(date_breaks = "1 month", date_labels = "%m/%d",
+                 limits = c(data$Date[1], last_date)) + xlab("") + 
+    ylab("Number of cases") +
+    ggtitle(title) +
+    geom_line(aes(col = "Real data"), size = 1.2, alpha = 0.7) +
+    geom_hline(yintercept = Asym, linetype = "dotted", size = 1, col = "#F8766D") + 
+    scale_y_continuous(breaks = breaks, 
+                      labels = function(x) format(x, scientific = TRUE)) +
+    theme_clean()
+}
+```
+
+
+```{r plot_data_worldwide}
+plot_data("COVID19 time series worldwide", data_worldwide, breaks = c(seq(0, 3e7, 1e7), Asym), Asym = Asym)
+```
+
+# Данные по России
+```{r plot_real_data_russia, cache=TRUE}
+ggplot(data = data_russia, aes(x = Date, y = value)) + geom_line(col = "#00BFC4", size = 1.2) + 
+  scale_x_date(date_breaks = "1 month", date_labels = "%m/%d", ) +
+  ggtitle("Real COVID19 data Russia") + xlab("") + 
+       ylab("Number of cases") + theme_bw() + theme(legend.position = "none") + theme_clean()
+```
+
+```{r fit_model_russia}
+fit_russia <- nls(value ~ SSlogis(day, Asym, xmid, scale), data = data_russia)
+summ_russia <- summary(fit_russia)
+Asym_russia <- summ_russia$coefficients[1]
+Asym_se_russia <- summ_russia$coefficients[4]
+```
+
+```{r get_predicted_data_russia, cache=TRUE}
+last_date_russia <- as.Date("31.12.20", format = "%d.%m.%y")
+days_russia <- seq(1, as.numeric(last_date - data_russia$Date[1]) + 1, 1)
+data_predicted_russia <- tibble(day = days, 
+                         Date = seq(data_russia$Date[1], last_date_russia, 1), 
+                       predicted_value = predict(fit_russia, newdata = data.frame(day = days_russia)))
+data_russia <- full_join(data_predicted_russia, data_russia, by = c("day" = "day", "Date" = "Date"))
+```
+
+В результате получили модель со значением $Asym = `r Asym_russia` \pm `r Asym_se_russia` (p < 0.001)$
+
+```{r plot_data_russia}
+plot_data("COVID19 time series in Russia", data_russia, breaks = c(seq(0, 3e6, 1e6), Asym_russia), Asym = Asym_russia)
+```
