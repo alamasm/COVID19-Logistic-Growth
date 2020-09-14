@@ -75,7 +75,7 @@ plot_data <- function(title, data, breaks, Asym) {
   ggplot(data = data, aes(x = Date, y = value)) + geom_line(
     aes(x = Date, y = predicted_value, col = "Predicted data"),
     size = 1.4, linetype = "dashed") + 
-    scale_x_date(date_breaks = "1 month", date_labels = "%m/%d",
+    scale_x_date(date_breaks = "2 months", date_labels = "%m/%d",
                  limits = c(data$Date[1], last_date)) + xlab("") + 
     ylab("Number of cases") +
     ggtitle(title) +
@@ -119,5 +119,5 @@ data_russia <- full_join(data_predicted_russia, data_russia, by = c("day" = "day
 В результате получили модель со значением $Asym = `r Asym_russia` \pm `r Asym_se_russia` (p < 0.001)$
 
 ```{r plot_data_russia}
-plot_data("COVID19 time series in Russia", data_russia, breaks = c(seq(0, 3e6, 1e6), Asym_russia), Asym = Asym_russia)
+plot_data("COVID19 time series in Russia", data_russia, breaks = c(seq(0, 9e5, 1e5), Asym_russia), Asym = Asym_russia)
 ```
